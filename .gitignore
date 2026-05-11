@@ -5,6 +5,7 @@
 .vscode/
 .vs/
 build/
+build-uwp/
 cmake-build-*/
 CMakeUserPresets.json
 out/

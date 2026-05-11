@@ -97,7 +97,11 @@ ECardResult CardGciFolder::createFile(const char* filename, size_t size, FileHan
 
   std::memcpy(gciFileHeader->m_game, m_game, 4);
   std::memcpy(gciFileHeader->m_maker, m_maker, 2);
-  strncpy(gciFileHeader->m_filename, filename, std::size(gciFileHeader->m_filename));
+  #ifdef AURORA_WINDOWS_STORE
+    strncpy_s(gciFileHeader->m_filename, filename, std::size(gciFileHeader->m_filename));
+  #else
+    strncpy(gciFileHeader->m_filename, filename, std::size(gciFileHeader->m_filename));
+  #endif
 
   gciFileHeader->m_modifiedTime = static_cast<uint32_t>(getGCTime());
   gciFileHeader->m_blockCount = neededBlocks;
@@ -144,7 +148,11 @@ ECardResult CardGciFolder::deleteFile(uint32_t fileno) { return ECardResult::NOC
 ECardResult CardGciFolder::renameFile(const char* oldName, const char* newName) {
   for (auto& gciFile : m_files) {
     if (strcmp(oldName, gciFile.file.m_filename) == 0) {
+      #ifdef AURORA_WINDOWS_STORE
+      strncpy_s(gciFile.file.m_filename, newName, std::size(gciFile.file.m_filename));
+      #else
       strncpy(gciFile.file.m_filename, newName, std::size(gciFile.file.m_filename));
+      #endif
       return ECardResult::READY;
     }
   }
@@ -210,7 +218,11 @@ ECardResult CardGciFolder::getStatus(uint32_t fileNo, CardStat& statOut) const {
     return ECardResult::NOFILE;
   const auto file = &gciFile->file;
 
-  std::strncpy(statOut.x0_fileName, file->m_filename, 32);
+  #ifdef AURORA_WINDOWS_STORE
+  strncpy_s(statOut.x0_fileName, file->m_filename, 32);
+  #else
+  strncpy(statOut.x0_fileName, file->m_filename, 32);
+  #endif
   statOut.x20_length = file->m_blockCount * BlockSize;
   statOut.x24_time = file->m_modifiedTime;
   memmove(statOut.x28_gameName.data(), file->m_game, 4);

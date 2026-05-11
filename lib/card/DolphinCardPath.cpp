@@ -2,7 +2,7 @@
 
 #include "DolphinCardPath.hpp"
 
-#if WIN32
+#if WIN32 && !defined(AURORA_WINDOWS_STORE)
 #include "windows.h"
 #include "winreg.h"
 #include "shlobj_core.h"
@@ -12,7 +12,7 @@
 
 #include "../internal.hpp"
 
-#if WIN32
+#if WIN32 && !defined(AURORA_WINDOWS_STORE)
 namespace {
   std::string ConvertWideToANSI(const std::wstring& wstr) {
     int count = WideCharToMultiByte(CP_ACP, 0, wstr.c_str(), wstr.length(), NULL, 0, NULL, NULL);
@@ -28,12 +28,21 @@ aurora::Module Log("aurora::card");
 
 #if WIN32
 
-#if WINDOWS_STORE
-using namespace Windows::Storage;
-#endif
-
 std::string ResolveDolphinCardPath(ECardSlot slot, const char* regionCode, bool isGciFolder) {
-#if !WINDOWS_STORE
+#ifdef AURORA_WINDOWS_STORE
+  char* pref = SDL_GetPrefPath(nullptr, "dolphin-emu");
+  if (pref == nullptr) {
+    Log.error("Unable to get pref path for dolphin-emu");
+    return {};
+  }
+  std::string path{pref};
+  SDL_free(pref);
+  if (isGciFolder) {
+    path += fmt::format("GC/{}/Card {}", regionCode, slot == ECardSlot::SlotA ? 'A' : 'B');
+  } else {
+    path += fmt::format("GC/MemoryCard{}.{}.raw", slot == ECardSlot::SlotA ? 'A' : 'B', regionCode);
+  }
+#else
   /* Detect where the User directory is. There are two different cases
    * 1. HKCU\Software\Dolphin Emulator\UserConfigPath exists
    *    -> Use this as the user directory path
@@ -67,10 +76,6 @@ std::string ResolveDolphinCardPath(ECardSlot slot, const char* regionCode, bool 
     Log.error("Unable to find Dolphin Emulator user directory!");
     return {};
   }
-#else
-  StorageFolder ^ localFolder = ApplicationData::Current->LocalFolder;
-  std::string path(localFolder->Path->Data());
-#endif
 
   std::string path;
   if (isGciFolder) {
@@ -78,6 +83,7 @@ std::string ResolveDolphinCardPath(ECardSlot slot, const char* regionCode, bool 
   }else {
     path = fmt::format("{}/GC/MemoryCard{}.{}.raw", ConvertWideToANSI(w_path), slot == ECardSlot::SlotA ? 'A' : 'B', regionCode);
   }
+#endif
 
   if (!std::filesystem::exists(path)) {
     Log.error("Unable to find Dolphin Card file! Search Path: {}", path);

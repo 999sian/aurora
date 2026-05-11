@@ -50,7 +50,7 @@ if (AURORA_ENABLE_GX)
 
   target_compile_definitions(gx_fifo_tests PRIVATE AURORA TARGET_PC)
 
-  target_link_libraries(gx_fifo_tests PRIVATE
+  set(_gx_fifo_test_libs
     gtest
     gtest_main
     fmt::fmt
@@ -58,9 +58,13 @@ if (AURORA_ENABLE_GX)
     absl::flat_hash_map
     absl::btree
     dawn::dawncpp_headers
-    TracyClient
     ${AURORA_SDL3_TARGET}
   )
+  if (NOT AURORA_WINDOWS_STORE)
+    list(APPEND _gx_fifo_test_libs TracyClient)
+  endif ()
+  target_link_libraries(gx_fifo_tests PRIVATE ${_gx_fifo_test_libs})
+  unset(_gx_fifo_test_libs)
 
   gtest_discover_tests(gx_fifo_tests)
 endif () # AURORA_ENABLE_GX

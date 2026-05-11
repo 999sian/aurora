@@ -5,10 +5,18 @@
 #define WIN32_LEAN_AND_MEAN 1
 #include <windows.h>
 #include <combaseapi.h>
+#ifndef AURORA_WINDOWS_STORE
 #include <Wbemidl.h>
 #include <comutil.h>
+#endif
 #include <dxgi.h>
 #include <wrl/client.h>
+
+#if defined(AURORA_WINDOWS_STORE)
+#if defined(_M_IX86) || defined(_M_X64) || defined(_M_AMD64)
+#include <intrin.h>
+#endif
+#endif
 
 template<typename T>
 using ComPtr = Microsoft::WRL::ComPtr<T>;
@@ -42,12 +50,14 @@ void log_system_information() {
   const auto memSize = GetMemoryAmount() / 1024 / 1024;
   Log.info("Memory: {} MiB", memSize);
 
+#ifndef AURORA_WINDOWS_STORE
 #if defined(__x86_64__) || defined(_M_X64) || defined(_M_X64)
   Log.info("Architecture: x86_64");
 #elif defined(__aarch64__) || defined(_M_ARM64)
   Log.info("Architecture: aarch64");
 #else
   Log.info("Architecture: Unknown");
+#endif
 #endif
 
   Log.info("OS: {}", GetOSVersion());
@@ -88,7 +98,113 @@ static std::string wideStringToUtf8(std::wstring_view str) {
   return result;
 }
 
+#if defined(AURORA_WINDOWS_STORE)
+static std::string TrimSpaces(std::string s) {
+  const auto not_space = [](unsigned char c) { return c != ' '; };
+  while (!s.empty() && !not_space(static_cast<unsigned char>(s.front()))) {
+    s.erase(s.begin());
+  }
+  while (!s.empty() && !not_space(static_cast<unsigned char>(s.back()))) {
+    s.pop_back();
+  }
+  return s;
+}
+
+#if defined(_M_IX86) || defined(_M_X64) || defined(_M_AMD64)
+static std::string CpuModelFromCpuid() {
+  int regs[4] = {};
+  __cpuid(regs, static_cast<int>(0x80000000u));
+  const auto max_ext = static_cast<unsigned>(regs[0]);
+  if (max_ext < 0x80000004u) {
+    return {};
+  }
+
+  char buf[49] = {};
+  for (unsigned leaf = 0x80000002, off = 0; leaf <= 0x80000004u; ++leaf, off += 16) {
+    __cpuidex(regs, static_cast<int>(leaf), 0);
+    std::memcpy(buf + off + 0, &regs[0], 4);
+    std::memcpy(buf + off + 4, &regs[1], 4);
+    std::memcpy(buf + off + 8, &regs[2], 4);
+    std::memcpy(buf + off + 12, &regs[3], 4);
+  }
+
+  return TrimSpaces(std::string(buf));
+}
+#endif
+
+static std::string SmbiosStringAt(const BYTE* struct_start, BYTE form_len, BYTE str_index) {
+  if (str_index == 0) {
+    return {};
+  }
+  const char* p = reinterpret_cast<const char*>(struct_start + form_len);
+  for (unsigned i = 1; i < str_index && *p != 0; ++i) {
+    p += std::strlen(p) + 1;
+  }
+  if (*p == 0) {
+    return {};
+  }
+  return TrimSpaces(std::string(p));
+}
+
+static std::string CpuModelFromSmbios() {
+  constexpr DWORD kRsmb = 'RSMB';
+  const DWORD need = GetSystemFirmwareTable(kRsmb, 0, nullptr, 0);
+  if (need < 8) {
+    return {};
+  }
+
+  std::vector<BYTE> buf(static_cast<size_t>(need));
+  if (GetSystemFirmwareTable(kRsmb, 0, buf.data(), need) != need) {
+    return {};
+  }
+
+  const DWORD table_len = *reinterpret_cast<const DWORD*>(buf.data() + 4);
+  if (static_cast<size_t>(table_len) + 8 > buf.size()) {
+    return {};
+  }
+
+  const BYTE* table = buf.data() + 8;
+  const BYTE* end = table + table_len;
+
+  for (const BYTE* p = table; p + 4 <= end;) {
+    const BYTE type = p[0];
+    const BYTE size = p[1];
+    if (size < 4 || p + size > end) {
+      break;
+    }
+
+    if (type == 4 && size > 16) {
+      if (std::string name = SmbiosStringAt(p, size, p[16]); !name.empty()) {
+        return name;
+      }
+    }
+
+    const BYTE* str_area = p + size;
+    while (str_area + 1 < end && (str_area[0] != 0 || str_area[1] != 0)) {
+      ++str_area;
+    }
+    if (str_area + 2 > end) {
+      break;
+    }
+    p = str_area + 2;
+  }
+
+  return {};
+}
+#endif
+
 std::string GetCpuModel() {
+#ifdef AURORA_WINDOWS_STORE
+#if defined(_M_IX86) || defined(_M_X64) || defined(_M_AMD64)
+  if (const std::string id = CpuModelFromCpuid(); !id.empty()) {
+    return id;
+  }
+#endif
+  if (const std::string bios = CpuModelFromSmbios(); !bios.empty()) {
+    return bios;
+  }
+  return Unknown;
+#else
   // Good fucking lord Microsoft, what the fuck is this?
   // https://learn.microsoft.com/en-us/windows/win32/wmisdk/example--getting-wmi-data-from-the-local-computer
 
@@ -188,6 +304,7 @@ std::string GetCpuModel() {
   }
 
   return result;
+#endif
 }
 
 uint64_t GetMemoryAmount() {

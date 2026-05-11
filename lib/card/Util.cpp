@@ -8,7 +8,18 @@ uint64_t getGCTime() {
 
   time(&sysTime);
 
-  // Account for DST where needed
+#if defined(_MSC_VER)
+  tm localTm{};
+  tm gmTm{};
+  if (localtime_s(&localTm, &sysTime) != 0 || gmtime_s(&gmTm, &sysTime) != 0) {
+    return 0;
+  }
+  if (localTm.tm_isdst == 1)
+    tzDST = 3600;
+  else
+    tzDST = 0;
+  time_t tzDiff = sysTime - mktime(&gmTm);
+#else
   tm* gmTime = localtime(&sysTime);
   if (gmTime->tm_isdst == 1)
     tzDST = 3600;
@@ -18,6 +29,7 @@ uint64_t getGCTime() {
   // Lazy way to get local time in sec
   gmTime = gmtime(&sysTime);
   time_t tzDiff = sysTime - mktime(gmTime);
+#endif
 
   return static_cast<uint64_t>(sysTime + tzDiff + tzDST) - 0x386D4380;
 }

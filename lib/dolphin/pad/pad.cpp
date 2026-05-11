@@ -742,13 +742,13 @@ u32 PADRead(PADStatus* status) {
           xl = 0;
         }
         if (std::abs(yl) > controller->m_deadZones.stickDeadZone) {
-          yl = static_cast<Sint16>(-(yl + 1u) / 256u);
+          yl = static_cast<Sint16>(-(static_cast<int>(yl) + 1) / 256);
         } else {
           yl = 0;
         }
       } else {
         xl /= 256;
-        yl = static_cast<Sint16>(-(yl + 1u) / 256u);
+        yl = static_cast<Sint16>(-(static_cast<int>(yl) + 1) / 256);
       }
 
       status[i].stickX = static_cast<int8_t>(xl);
@@ -770,13 +770,13 @@ u32 PADRead(PADStatus* status) {
         }
 
         if (std::abs(yr) > controller->m_deadZones.substickDeadZone) {
-          yr = static_cast<Sint16>(-(yr + 1u) / 256u);
+          yr = static_cast<Sint16>(-(static_cast<int>(yr) + 1) / 256);
         } else {
           yr = 0;
         }
       } else {
         xr /= 256;
-        yr = static_cast<Sint16>(-(yr + 1u) / 256u);
+        yr = static_cast<Sint16>(-(static_cast<int>(yr) + 1) / 256);
       }
 
       status[i].substickX = static_cast<int8_t>(xr);

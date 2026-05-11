@@ -16,6 +16,10 @@ function(aurora_find_package_global)
   set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL ${_PREV_FIND_PACKAGE_TARGETS_GLOBAL})
 endfunction()
 
+if (AURORA_WINDOWS_STORE)
+  include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/AuroraUwpDep.cmake)
+endif ()
+
 if (AURORA_ENABLE_GX)
   include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/AuroraDawnProvider.cmake)
 endif ()
@@ -90,6 +94,28 @@ else ()
 endif ()
 
 if (AURORA_ENABLE_GX)
+  set(_u "")
+  if (AURORA_WINDOWS_STORE AND DEFINED AURORA_UWP_DEP_ROOT)
+    set(_u "${AURORA_UWP_DEP_ROOT}/x64")
+  endif ()
+  if (_u AND EXISTS "${_u}/lib/z.lib" AND EXISTS "${_u}/lib/libpng16.lib" AND NOT TARGET zlib_uwp_depot)
+    message(STATUS "aurora: zlib and libpng from uwp-dep (${AURORA_UWP_DEP_ROOT})")
+    add_library(zlib_uwp_depot SHARED IMPORTED GLOBAL)
+    set_target_properties(zlib_uwp_depot PROPERTIES
+      IMPORTED_LOCATION "${_u}/bin/z.dll"
+      IMPORTED_IMPLIB "${_u}/lib/z.lib"
+      INTERFACE_INCLUDE_DIRECTORIES "${_u}/include")
+    add_library(ZLIB::ZLIB ALIAS zlib_uwp_depot)
+    add_library(libpng16_uwp_depot SHARED IMPORTED GLOBAL)
+    set_target_properties(libpng16_uwp_depot PROPERTIES
+      IMPORTED_LOCATION "${_u}/bin/libpng16.dll"
+      IMPORTED_IMPLIB "${_u}/lib/libpng16.lib"
+      INTERFACE_INCLUDE_DIRECTORIES "${_u}/include;${_u}/include/libpng16"
+      INTERFACE_LINK_LIBRARIES ZLIB::ZLIB)
+    add_library(PNG::PNG ALIAS libpng16_uwp_depot)
+  endif ()
+  unset(_u)
+
   if (NOT TARGET ZLIB::ZLIB)
     aurora_find_package_global(ZLIB QUIET)
   endif ()
@@ -148,6 +174,14 @@ if (AURORA_ENABLE_GX)
     endif ()
   else ()
     message(STATUS "aurora: Using existing libpng")
+  endif ()
+  if (AURORA_WINDOWS_STORE AND MSVC)
+    foreach (_aurora_png IN ITEMS png_shared png_static)
+      if (TARGET ${_aurora_png})
+        target_compile_options(${_aurora_png} PRIVATE /wd4146)
+      endif ()
+    endforeach ()
+    unset(_aurora_png)
   endif ()
 
   aurora_find_package_global(Freetype QUIET)
@@ -228,6 +262,9 @@ if (AURORA_ENABLE_GX)
   else ()
     message(STATUS "aurora: Using existing sqlite3")
   endif ()
+  if (TARGET sqlite3 AND AURORA_WINDOWS_STORE)
+    target_compile_definitions(sqlite3 PRIVATE SQLITE_OS_WINRT=1)
+  endif ()
 
   if (AURORA_CACHE_USE_ZSTD)
     if (NOT TARGET libzstd_static)
@@ -267,21 +304,54 @@ if (AURORA_ENABLE_GX)
 endif ()
 
 if (NOT TARGET TracyClient)
-  message(STATUS "aurora: Fetching Tracy")
+  if (AURORA_WINDOWS_STORE)
+    set(_aurora_tracy_tgz "${CMAKE_BINARY_DIR}/aurora_deps/tracy-a64b9a20294d59421a2f57aeca3c6383d8c48169.tar.gz")
+    set(_aurora_tracy_extract "${CMAKE_BINARY_DIR}/aurora_deps/tracy-src")
+    set(_aurora_tracy_marker "${_aurora_tracy_extract}/.aurora_tracy_extracted")
+    if (NOT EXISTS "${_aurora_tracy_marker}")
+      file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/aurora_deps")
+      file(DOWNLOAD
+        "https://github.com/wolfpld/tracy/archive/a64b9a20294d59421a2f57aeca3c6383d8c48169.tar.gz"
+        "${_aurora_tracy_tgz}"
+        EXPECTED_HASH SHA256=24d342b5127d7f659dc3cf94f24347b348cc736f25b17a691fd7f69541937658
+      )
+      file(MAKE_DIRECTORY "${_aurora_tracy_extract}")
+      file(ARCHIVE_EXTRACT INPUT "${_aurora_tracy_tgz}" DESTINATION "${_aurora_tracy_extract}")
+      file(WRITE "${_aurora_tracy_marker}" "")
+    endif ()
+    file(GLOB _aurora_tracy_roots LIST_DIRECTORIES TRUE "${_aurora_tracy_extract}/tracy-*")
+    if (NOT _aurora_tracy_roots)
+      message(FATAL_ERROR "aurora: Tracy archive layout unexpected under ${_aurora_tracy_extract}")
+    endif ()
+    list(GET _aurora_tracy_roots 0 _aurora_tracy_root)
+    if (NOT EXISTS "${_aurora_tracy_root}/public/tracy/Tracy.hpp")
+      message(FATAL_ERROR "aurora: Tracy public headers missing at ${_aurora_tracy_root}/public/tracy")
+    endif ()
+    message(STATUS "aurora: Tracy headers for UWP (${_aurora_tracy_root}/public)")
+    add_library(TracyClient INTERFACE)
+    target_include_directories(TracyClient INTERFACE "${_aurora_tracy_root}/public")
+    unset(_aurora_tracy_tgz)
+    unset(_aurora_tracy_extract)
+    unset(_aurora_tracy_marker)
+    unset(_aurora_tracy_roots)
+    unset(_aurora_tracy_root)
+  else ()
+    message(STATUS "aurora: Fetching Tracy")
 
-  # Default to off, users can enable the cache variable if they want to use it.
-  set(TRACY_ENABLE OFF CACHE BOOL "Enable Tracy profiling")
+    # Default to off, users can enable the cache variable if they want to use it.
+    set(TRACY_ENABLE OFF CACHE BOOL "Enable Tracy profiling")
 
-  FetchContent_Declare(
-          tracy
-          URL https://github.com/wolfpld/tracy/archive/a64b9a20294d59421a2f57aeca3c6383d8c48169.tar.gz
-          URL_HASH SHA256=24d342b5127d7f659dc3cf94f24347b348cc736f25b17a691fd7f69541937658
-          DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-          EXCLUDE_FROM_ALL
-  )
-  FetchContent_MakeAvailable(tracy)
+    FetchContent_Declare(
+      tracy
+      URL https://github.com/wolfpld/tracy/archive/a64b9a20294d59421a2f57aeca3c6383d8c48169.tar.gz
+      URL_HASH SHA256=24d342b5127d7f659dc3cf94f24347b348cc736f25b17a691fd7f69541937658
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+      EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(tracy)
 
-  if (NOT TARGET TracyClient)
-    message(FATAL_ERROR "Failed to make TracyClient available")
+    if (NOT TARGET TracyClient)
+      message(FATAL_ERROR "Failed to make TracyClient available")
+    endif ()
   endif ()
 endif ()

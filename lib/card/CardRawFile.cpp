@@ -326,11 +326,19 @@ ECardResult CardRawFile::renameFile(const char* oldName, const char* newName) {
     BlockAllocationTable bat = m_bats[m_currentBat];
     _deleteFile(*replF, bat);
     std::memset(f->m_filename, 0, 32);
-    std::strncpy(f->m_filename, newName, 32);
+    #ifdef AURORA_WINDOWS_STORE
+      strncpy_s(f->m_filename, newName, 32);
+    #else
+      std::strncpy(f->m_filename, newName, 32);
+    #endif
     _updateDirAndBat(dir, bat);
   } else {
     std::memset(f->m_filename, 0, 32);
-    std::strncpy(f->m_filename, newName, 32);
+    #ifdef AURORA_WINDOWS_STORE
+      strncpy_s(f->m_filename, newName, 32);
+    #else
+      std::strncpy(f->m_filename, newName, 32);
+    #endif
     _updateDirAndBat(dir, m_bats[m_currentBat]);
   }
   return ECardResult::READY;
@@ -531,7 +539,7 @@ ECardResult CardRawFile::getStatus(uint32_t fileNo, CardStat& statOut) const {
   if (!file || file->m_game[0] == 0xFF)
     return ECardResult::NOFILE;
 
-  std::strncpy(statOut.x0_fileName, file->m_filename, 32);
+  std::memcpy(statOut.x0_fileName, file->m_filename, 32);
   statOut.x20_length = file->m_blockCount * BlockSize;
   statOut.x24_time = file->m_modifiedTime;
   memmove(statOut.x28_gameName.data(), file->m_game, 4);

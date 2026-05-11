@@ -29,6 +29,9 @@ static void log_callback(AuroraLogLevel level, const char* module, const char* m
     levelStr = "FATAL";
     out = stderr;
     break;
+  default:
+    levelStr = "UNKNOWN";
+    break;
   }
   fprintf(out, "[%s: %s;%s]\n", levelStr, module, message);
   if (level == LOG_FATAL) {

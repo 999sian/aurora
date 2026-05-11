@@ -17,7 +17,9 @@
 
 #ifdef WEBGPU_DAWN
 #include "../dawn/BackendBinding.hpp"
+#if !defined(AURORA_WINDOWS_STORE)
 #include <dawn/native/DawnNative.h>
+#endif
 #endif
 
 namespace aurora::gx {
@@ -48,6 +50,10 @@ static wgpu::Adapter g_adapter;
 wgpu::Instance g_instance;
 static wgpu::AdapterInfo g_adapterInfo;
 static wgpu::SurfaceCapabilities g_surfaceCapabilities;
+
+#if defined(AURORA_WINDOWS_STORE)
+extern "C" __declspec(dllimport) void* uwp_GetWindowReference();
+#endif
 
 namespace {
 
@@ -381,6 +387,7 @@ static bool create_surface() {
     Log.error("Failed to create surface: no window");
     return false;
   }
+#ifndef AURORA_WINDOWS_STORE
   const auto chainedDescriptor = utils::SetupWindowAndGetSurfaceDescriptor(window);
   if (!chainedDescriptor) {
     Log.error("Failed to create surface descriptor for current window");
@@ -390,6 +397,16 @@ static bool create_surface() {
       .nextInChain = chainedDescriptor.get(),
       .label = "Surface",
   };
+#else
+  wgpu::SurfaceDescriptorFromWindowsCoreWindow surfaceDesc{};
+  surfaceDesc.sType = wgpu::SType::SurfaceDescriptorFromWindowsCoreWindow;
+  surfaceDesc.coreWindow = uwp_GetWindowReference();
+  const wgpu::SurfaceDescriptor surfaceDescriptor{
+      .nextInChain = reinterpret_cast<const wgpu::ChainedStruct*>(&surfaceDesc),
+      .label = "Surface",
+  };
+#endif
+
   release_surface();
   g_surface = g_instance.CreateSurface(&surfaceDescriptor);
   if (!g_surface) {
@@ -410,9 +427,11 @@ bool initialize(AuroraBackend auroraBackend) {
         .requiredFeatures = requiredInstanceFeatures.data(),
     };
 #ifdef WEBGPU_DAWN
+#if !defined(AURORA_WINDOWS_STORE)
     dawn::native::DawnInstanceDescriptor dawnInstanceDescriptor;
     dawnInstanceDescriptor.backendValidationLevel = dawn::native::BackendValidationLevel::Disabled;
     instanceDescriptor.nextInChain = &dawnInstanceDescriptor;
+#endif
 #endif
     g_instance = wgpu::CreateInstance(&instanceDescriptor);
     if (!g_instance) {
