@@ -1024,7 +1024,7 @@ bool initialize(AuroraBackend auroraBackend, bool allowCpu) {
     } else {
       Log.warn("Adapter does not support SharedTextureMemoryD3D12Resource -- VR swapchain import will be unavailable");
     }
-#elif defined(__ANDROID__)
+#elif defined(__ANDROID__) || defined(__linux__)
     // Android/Vulkan equivalent of the D3D12 block above -- enables VR's
     // shared-image GPU-direct swapchain-copy path (dusk::vr::Session::
     // ensureSharedImageResources, vr_xr_submit.hpp). Same "must be requested
@@ -1056,10 +1056,12 @@ bool initialize(AuroraBackend auroraBackend, bool allowCpu) {
       if (dedicated) {
         requiredFeatures.push_back(wgpu::FeatureName::SharedTextureMemoryVkDedicatedAllocation);
       }
+      // Dawn rejects device creation if more than one shared-fence type is
+      // enabled. Quest only ever reports SyncFD; desktop drivers (RADV etc.)
+      // report both. Prefer SyncFD (Dawn's own preference on export).
       if (syncFd) {
         requiredFeatures.push_back(wgpu::FeatureName::SharedFenceSyncFD);
-      }
-      if (opaqueFdFence) {
+      } else if (opaqueFdFence) {
         requiredFeatures.push_back(wgpu::FeatureName::SharedFenceVkSemaphoreOpaqueFD);
       }
       g_vulkanSharedImageExportSupported = opaqueFdImage && (syncFd || opaqueFdFence);

@@ -51,6 +51,11 @@ set_target_properties(aurora_gx PROPERTIES FOLDER "aurora")
 
 target_link_libraries(aurora_gx PUBLIC aurora::core dawn::webgpu_dawn xxHash::xxhash)
 target_link_libraries(aurora_gx PRIVATE absl::btree absl::flat_hash_map sqlite3 Tracy::TracyClient PNG::PNG)
+if (UNIX AND NOT APPLE AND NOT ANDROID)
+  # std::atomic<WorkerFrameStats> is not lock-free; older GCC (e.g. 13 on
+  # Ubuntu 24.04) emits __atomic_load/__atomic_store calls into libatomic.
+  target_link_libraries(aurora_gx PRIVATE atomic)
+endif ()
 target_compile_definitions(aurora_gx PRIVATE WEBGPU_DAWN)
 
 if (AURORA_ENABLE_RMLUI)
