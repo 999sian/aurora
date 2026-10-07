@@ -538,6 +538,9 @@ void start_offscreen(uint32_t width, uint32_t height, const ExternalPassTarget* 
       .hasStencil = false,
   };
   newPass.externalTarget = external != nullptr;
+  if (external != nullptr) {
+    newPass.densityMap = external->densityMap;
+  }
   set_single_color_target(newPass, g_recorder.offscreenColor.format, {width, height}, g_recorder.offscreenColor.view);
   current_render_passes().emplace_back(std::move(newPass));
   ++g_recorder.currentRenderPass;
@@ -926,6 +929,7 @@ void resolve_pass_into(TextureHandle texture, ClipRect rect, bool clearColor, bo
       .hasStencil = prevPass.hasStencil,
   };
   newPass.externalTarget = prevPass.externalTarget;
+  newPass.densityMap = prevPass.densityMap;
   const bool fullColorClear = clearColor && clearAlpha;
   for (uint32_t i = 0; i < newPass.colorAttachmentCount; ++i) {
     auto& color = newPass.colorAttachments[i];

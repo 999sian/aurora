@@ -133,6 +133,9 @@ struct RenderPass {
   // the pass's output is consumed by whoever owns that texture, so it is
   // never discardable for lack of a snapshot/resolve consumer.
   bool externalTarget = false;
+  // ExternalPassTarget::densityMap, carried with the external target across
+  // pass splits; chained as wgpu::RenderPassFragmentDensityMap when set.
+  wgpu::TextureView densityMap;
   std::vector<tex_palette_conv::ConvRequest> paletteConvs;
 
   RenderTargetLayout target_layout() const noexcept;

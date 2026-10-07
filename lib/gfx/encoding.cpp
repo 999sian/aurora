@@ -295,7 +295,14 @@ void render(wgpu::CommandEncoder& cmd, FramePacket& frame, RenderPass& passInfo,
   const auto label = passInfo.label.empty()
                          ? fmt::format("Render pass {}", passIndex)
                          : fmt::format("{} {}x{}", passInfo.label, sceneSize.width, sceneSize.height);
+#if AURORA_HAS_FRAGMENT_DENSITY_MAP
+  wgpu::RenderPassFragmentDensityMap densityMap;
+  densityMap.densityMap = passInfo.densityMap;
+#endif
   const wgpu::RenderPassDescriptor renderPassDescriptor{
+#if AURORA_HAS_FRAGMENT_DENSITY_MAP
+      .nextInChain = passInfo.densityMap ? &densityMap : nullptr,
+#endif
       .label = label.c_str(),
       .colorAttachmentCount = passInfo.colorAttachmentCount,
       .colorAttachments = attachments.data(),

@@ -6,6 +6,14 @@
 
 #include <webgpu/webgpu_cpp.h>
 
+// Fragment density maps (VK_EXT_fragment_density_map, ExternalPassTarget::densityMap) exist only in Dawn builds
+// that carry the API (the 999sian/dawn fork); its chained struct's generated C init macro tells them apart.
+#ifdef WGPU_RENDER_PASS_FRAGMENT_DENSITY_MAP_INIT
+#define AURORA_HAS_FRAGMENT_DENSITY_MAP 1
+#else
+#define AURORA_HAS_FRAGMENT_DENSITY_MAP 0
+#endif
+
 namespace aurora::gfx {
 
 inline constexpr size_t InlineDrawPayloadSize = 128;
@@ -76,6 +84,10 @@ wgpu::TextureFormat depth_format() noexcept;
 uint32_t sample_count() noexcept;
 RenderTargetLayout scene_render_target_layout() noexcept;
 bool uses_reversed_z() noexcept;
+/// True when the device enabled wgpu::FeatureName::FragmentDensityMap (Vulkan with
+/// VK_EXT_fragment_density_map + non-subsampled images, e.g. Quest 2/3). Always false
+/// without AURORA_HAS_FRAGMENT_DENSITY_MAP.
+bool supports_fragment_density_map() noexcept;
 
 DrawTypeId register_draw_type(const DrawTypeDescriptor& desc);
 void unregister_draw_type(DrawTypeId type) noexcept;
@@ -274,12 +286,19 @@ bool create_pass(uint32_t width, uint32_t height);
 /// same pipelines apply. The texture needs RenderAttachment (drawn into),
 /// CopySrc + TextureBinding (in-pass GXCopyTex captures read the pass's
 /// color) usages.
+///
+/// `densityMap` (optional, needs supports_fragment_density_map()): a view of an
+/// RG8Unorm texture with TextureUsage::FragmentDensityMap, at least
+/// ceil(width / 16) x ceil(height / 16) texels. Chained as
+/// wgpu::RenderPassFragmentDensityMap onto every render pass that draws into this
+/// target (fixed foveated rendering); passes elsewhere are unaffected.
 struct ExternalPassTarget {
   wgpu::Texture texture;
   wgpu::TextureView view;
   wgpu::TextureFormat format = wgpu::TextureFormat::Undefined;
   uint32_t width = 0;
   uint32_t height = 0;
+  wgpu::TextureView densityMap;
 };
 
 /// create_pass() with the caller's own color target instead of a pooled

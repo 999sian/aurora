@@ -182,8 +182,13 @@ elseif (_aurora_dawn_provider STREQUAL "package")
         "No prebuilt Dawn package is available for ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}"
         " with CMAKE_OSX_ARCHITECTURES='${CMAKE_OSX_ARCHITECTURES}'.")
     endif ()
-    set(AURORA_DAWN_PACKAGE_URL
-      "https://github.com/encounter/dawn/releases/download/${AURORA_DAWN_VERSION}/dawn-${_dawn_system}-${_dawn_arch}.tar.gz")
+    if (ANDROID)
+      set(AURORA_DAWN_PACKAGE_URL
+        "https://github.com/999sian/dawn/releases/download/${AURORA_DAWN_ANDROID_VERSION}/dawn-${_dawn_system}-${_dawn_arch}.tar.gz")
+    else ()
+      set(AURORA_DAWN_PACKAGE_URL
+        "https://github.com/encounter/dawn/releases/download/${AURORA_DAWN_VERSION}/dawn-${_dawn_system}-${_dawn_arch}.tar.gz")
+    endif ()
   endif ()
   message(STATUS "aurora: Fetching prebuilt Dawn package from ${AURORA_DAWN_PACKAGE_URL}")
 

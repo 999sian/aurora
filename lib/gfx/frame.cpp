@@ -308,6 +308,14 @@ RenderTargetLayout scene_render_target_layout() noexcept {
 
 bool uses_reversed_z() noexcept { return gx::UseReversedZ; }
 
+bool supports_fragment_density_map() noexcept {
+#if AURORA_HAS_FRAGMENT_DENSITY_MAP
+  return g_device && g_device.HasFeature(wgpu::FeatureName::FragmentDensityMap);
+#else
+  return false;
+#endif
+}
+
 DrawTypeId register_draw_type(const DrawTypeDescriptor& desc) {
   if (desc.draw == nullptr) {
     Log.warn("register_draw_type: draw callback is null");

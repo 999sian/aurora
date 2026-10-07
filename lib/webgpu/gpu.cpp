@@ -997,6 +997,13 @@ bool initialize(AuroraBackend auroraBackend, bool allowCpu) {
       }
 #endif
     }
+#if AURORA_HAS_FRAGMENT_DENSITY_MAP
+    // Fixed foveated rendering (gfx::ExternalPassTarget::densityMap). Only Vulkan devices with
+    // VK_EXT_fragment_density_map + non-subsampled images report it (Quest 2/3).
+    if (g_adapter.HasFeature(wgpu::FeatureName::FragmentDensityMap)) {
+      requiredFeatures.push_back(wgpu::FeatureName::FragmentDensityMap);
+    }
+#endif
 #if _WIN32
     // NEW: needed for VR fence sync (dusk::vr::Session::ensureFenceSync,
     // vr_xr_submit.hpp). Dawn's ImportSharedFence() requires this feature to
