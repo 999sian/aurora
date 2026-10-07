@@ -714,6 +714,8 @@ void gpu_synchronize() { render_worker::synchronize(); }
 
 void synchronize() { render_worker::synchronize(); }
 
+void enqueue_on_render_worker(void (*callback)()) { render_worker::enqueue_work(callback); }
+
 void after_present() noexcept {
   const auto now = PresentClock::now();
   const int64_t nowNs = timestamp_ns(now);
