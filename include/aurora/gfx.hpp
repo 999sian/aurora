@@ -380,6 +380,13 @@ uint32_t current_frame() noexcept;
 /// code that registered draw types. Callable from the game thread only.
 void synchronize();
 
+/// Queues `callback` on the render worker behind everything already queued
+/// and returns without waiting: called right after aurora_end_frame(), it runs
+/// once that frame has been encoded and submitted (after its encoder tasks'
+/// afterSubmit callbacks). synchronize() waits for it. Runs inline when the
+/// worker isn't running. Callable from the game thread only.
+void enqueue_on_render_worker(void (*callback)());
+
 /// Render-worker timing of the most recently completed frame (ms): time
 /// spent encoding render passes / encoder tasks, in CommandEncoder::Finish,
 /// in Queue::Submit, and the worker's wall time from its begin-frame task to
