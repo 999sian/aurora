@@ -898,8 +898,6 @@ void resolve_pass_into(TextureHandle texture, ClipRect rect, bool clearColor, bo
   prevPass.resolveTarget = std::move(texture);
   prevPass.resolveRect = rect;
   prevPass.resolveFormat = resolveFormat;
-  // EFB resolve/copy passes must not carry an FDM attachment
-  prevPass.densityMap = nullptr;
   // Push UV transform uniform for tex_copy_conv (crop region in UV space)
   const auto srcW = static_cast<float>(prevPass.colorAttachments[SceneColorAttachmentIndex].size.width);
   const auto srcH = static_cast<float>(prevPass.colorAttachments[SceneColorAttachmentIndex].size.height);
@@ -931,7 +929,7 @@ void resolve_pass_into(TextureHandle texture, ClipRect rect, bool clearColor, bo
       .hasStencil = prevPass.hasStencil,
   };
   newPass.externalTarget = prevPass.externalTarget;
-  newPass.densityMap = nullptr;
+  newPass.densityMap = prevPass.densityMap;
   const bool fullColorClear = clearColor && clearAlpha;
   for (uint32_t i = 0; i < newPass.colorAttachmentCount; ++i) {
     auto& color = newPass.colorAttachments[i];
