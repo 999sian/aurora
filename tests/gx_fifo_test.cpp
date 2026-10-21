@@ -105,6 +105,64 @@ TEST_F(GXFifoTest, FifoPublishesOnlyAtExplicitBoundary) {
   EXPECT_EQ(g_gxState.bpRegCache[0x41], 0x41123456u);
 }
 
+TEST_F(GXFifoTest, DrawBatchPublishesFourCompletedAutoSizedDraws) {
+  aurora::gx::fifo::init();
+  aurora::gx::fifo::begin_frame();
+  GXClearVtxDesc();
+  GXSetVtxDesc(GX_VA_POS, GX_DIRECT);
+  GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XYZ, GX_U8, 0);
+  aurora::gfx::g_testProcessedDrawCount.store(0, std::memory_order_relaxed);
+
+  for (unsigned draw = 0; draw < 4; ++draw) {
+    GXBegin(GX_TRIANGLES, GX_VTXFMT0, GX_AUTO);
+    GXPosition3u8(0, 1, 2);
+    GXPosition3u8(3, 4, 5);
+    GXPosition3u8(6, 7, 8);
+    GXEnd();
+    if (draw < 3) {
+      EXPECT_FALSE(wait_for(aurora::gfx::g_testProcessedDrawCount, draw + 1));
+    }
+  }
+  EXPECT_TRUE(wait_for(aurora::gfx::g_testProcessedDrawCount, 4));
+  aurora::gx::fifo::drain();
+  aurora::gx::fifo::end_frame();
+}
+
+TEST_F(GXFifoTest, ExplicitPublicationAndDrainResetPartialDrawBatch) {
+  for (const bool useDrain : {false, true}) {
+    SCOPED_TRACE(useDrain ? "drain" : "publish");
+    aurora::gx::fifo::init();
+    aurora::gx::fifo::begin_frame();
+    GXClearVtxDesc();
+    GXSetVtxDesc(GX_VA_POS, GX_DIRECT);
+    GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XYZ, GX_U8, 0);
+    aurora::gfx::g_testProcessedDrawCount.store(0, std::memory_order_relaxed);
+    const auto draw = [] {
+      GXBegin(GX_TRIANGLES, GX_VTXFMT0, GX_AUTO);
+      GXPosition3u8(0, 1, 2);
+      GXPosition3u8(3, 4, 5);
+      GXPosition3u8(6, 7, 8);
+      GXEnd();
+    };
+    draw();
+    draw();
+    if (useDrain) {
+      aurora::gx::fifo::drain();
+    } else {
+      aurora::gx::fifo::publish();
+    }
+    EXPECT_TRUE(wait_for(aurora::gfx::g_testProcessedDrawCount, 2));
+    draw();
+    draw();
+    EXPECT_FALSE(wait_for(aurora::gfx::g_testProcessedDrawCount, 4));
+    draw();
+    draw();
+    EXPECT_TRUE(wait_for(aurora::gfx::g_testProcessedDrawCount, 6));
+    aurora::gx::fifo::drain();
+    aurora::gx::fifo::end_frame();
+  }
+}
+
 TEST_F(GXFifoTest, AutoSizedDrawPublishesAfterLengthPatch) {
   aurora::gx::fifo::init();
   aurora::gx::fifo::begin_frame();
@@ -135,15 +193,17 @@ TEST_F(GXFifoTest, CommandsAfterFinalDrawRemainPendingUntilDrain) {
   aurora::gfx::g_testDrawCount = 0;
   aurora::gfx::g_testProcessedDrawCount.store(0, std::memory_order_relaxed);
 
-  GXBegin(GX_TRIANGLES, GX_VTXFMT0, 3);
-  GXPosition3u8(0, 1, 2);
-  GXPosition3u8(3, 4, 5);
-  GXPosition3u8(6, 7, 8);
-  GXEnd();
+  for (unsigned draw = 0; draw < 4; ++draw) {
+    GXBegin(GX_TRIANGLES, GX_VTXFMT0, 3);
+    GXPosition3u8(0, 1, 2);
+    GXPosition3u8(3, 4, 5);
+    GXPosition3u8(6, 7, 8);
+    GXEnd();
+  }
 
   const std::array<u8, 5> trailingBpWrite{GX_LOAD_BP_REG, 0x41, 0x12, 0x34, 0x56};
   aurora::gx::fifo::write_data(trailingBpWrite.data(), trailingBpWrite.size());
-  ASSERT_TRUE(wait_for(aurora::gfx::g_testProcessedDrawCount, 1));
+  ASSERT_TRUE(wait_for(aurora::gfx::g_testProcessedDrawCount, 4));
   EXPECT_FALSE(g_gxState.bpRegValid.test(0x41));
 
   aurora::gx::fifo::drain();

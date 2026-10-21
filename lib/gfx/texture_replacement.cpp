@@ -112,6 +112,7 @@ struct LoadCompletion {
   EntryLoadSnapshot entry;
   std::optional<gfx::ConvertedTexture> texture;
   bool thumbnailStored = false;
+  uint64_t priority = 0;
 };
 
 struct SourceKeyHash {
@@ -148,6 +149,7 @@ std::deque<LoadJob> s_highPriorityJobs;
 std::deque<LoadJob> s_lowPriorityJobs;
 std::deque<LoadCompletion> s_workerCompletions;
 std::vector<LoadCompletion> s_readyPublishes;
+std::vector<LoadCompletion> s_deferredPublishes;
 std::unordered_map<uint64_t, uint64_t> s_pendingFullLoads;
 std::unordered_set<uint64_t> s_pendingThumbnailLoads;
 std::vector<thread::Thread> s_workers;
@@ -831,11 +833,11 @@ void worker_main(std::stop_token token) {
   }
 }
 
-void start_worker_pool() {
+// Caller holds s_jobMutex.
+void start_worker_pool_locked() {
   if constexpr (!gx::texture::AsyncTextureReplacements) {
     return;
   }
-  std::lock_guard lock{s_jobMutex};
   if (!s_workers.empty()) {
     return;
   }
@@ -880,21 +882,23 @@ void stop_worker_pool() {
     s_workersPaused = false;
   }
   s_readyPublishes.clear();
+  s_deferredPublishes.clear();
 }
 
-void queue_full_load(const EntryLoadSnapshot& entry) {
+// Caller holds s_registryMutex, so the inserted job can take its owned snapshot safely.
+void queue_full_load(const ReplacementKey& key, const ReplacementEntry& entry) {
   if constexpr (!gx::texture::AsyncTextureReplacements) {
     return;
   }
-  start_worker_pool();
   std::lock_guard lock{s_jobMutex};
+  start_worker_pool_locked();
   const uint64_t priority = ++s_requestSequence;
   const auto [it, inserted] = s_pendingFullLoads.emplace(entry.id, priority);
   if (!inserted) {
     it->second = priority;
     return;
   }
-  s_highPriorityJobs.push_back({.tier = Tier::Full, .entry = entry});
+  s_highPriorityJobs.push_back({.tier = Tier::Full, .entry = snapshot_entry(key, entry)});
   s_jobCv.notify_one();
 }
 
@@ -905,8 +909,8 @@ void queue_thumbnail_load(const EntryLoadSnapshot& entry) {
   if (!is_dds_entry(entry)) {
     return;
   }
-  start_worker_pool();
   std::lock_guard lock{s_jobMutex};
+  start_worker_pool_locked();
   if (!s_pendingThumbnailLoads.insert(entry.id).second) {
     return;
   }
@@ -1154,7 +1158,7 @@ find_replacement_for_key_locked(const ReplacementKey& key) noexcept {
   if (const auto cache = s_cacheByKey.find(key); cache != s_cacheByKey.end() && cache->second.id == entry->id) {
     touch_cached_replacement(cache);
     if (cache->second.tier == Tier::Thumbnail && !s_failedIds.contains(entry->id)) {
-      queue_full_load(snapshot_entry(key, *entry));
+      queue_full_load(key, *entry);
     }
     return gfx::texture_replacement::ReplacementResult{.handle = cache->second.handle, .id = entry->id};
   }
@@ -1174,7 +1178,7 @@ find_replacement_for_key_locked(const ReplacementKey& key) noexcept {
         cache_replacement_locked(key, entry->id, thumbnailHandle, tier);
       }
       if (tier != Tier::Full && !s_failedIds.contains(entry->id)) {
-        queue_full_load(snapshot_entry(key, *entry));
+        queue_full_load(key, *entry);
       }
       return gfx::texture_replacement::ReplacementResult{.handle = std::move(thumbnailHandle), .id = entry->id};
     }
@@ -1750,16 +1754,16 @@ StreamingStats process_streaming() noexcept {
 
   {
     std::lock_guard lock{s_jobMutex};
-    const auto priority = [](uint64_t id) {
-      const auto it = s_pendingFullLoads.find(id);
-      return it == s_pendingFullLoads.end() ? 0 : it->second;
-    };
-    std::stable_sort(s_readyPublishes.begin(), s_readyPublishes.end(),
-                     [&](const auto& lhs, const auto& rhs) { return priority(lhs.entry.id) > priority(rhs.entry.id); });
+    for (auto& completion : s_readyPublishes) {
+      const auto it = s_pendingFullLoads.find(completion.entry.id);
+      completion.priority = it == s_pendingFullLoads.end() ? 0 : it->second;
+    }
   }
+  std::stable_sort(s_readyPublishes.begin(), s_readyPublishes.end(),
+                   [](const auto& lhs, const auto& rhs) { return lhs.priority > rhs.priority; });
 
   StreamingStats stats;
-  std::vector<LoadCompletion> deferred;
+  s_deferredPublishes.clear();
   for (auto& completion : s_readyPublishes) {
     bool selected = false;
     {
@@ -1777,7 +1781,7 @@ StreamingStats process_streaming() noexcept {
 
     const uint64_t bytes = converted_upload_bytes(*completion.texture);
     if (!publish_fits_budget(stats.publishes, stats.publishBytes, bytes)) {
-      deferred.push_back(std::move(completion));
+      s_deferredPublishes.push_back(std::move(completion));
       continue;
     }
 
@@ -1802,7 +1806,8 @@ StreamingStats process_streaming() noexcept {
     ++stats.publishes;
     stats.publishBytes += bytes;
   }
-  s_readyPublishes = std::move(deferred);
+  s_readyPublishes.clear();
+  s_readyPublishes.swap(s_deferredPublishes);
   stats.pendingLoads = pending_full_load_count();
   return stats;
 }

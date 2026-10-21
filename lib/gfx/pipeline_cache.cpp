@@ -1,4 +1,5 @@
 #include "pipeline_cache.hpp"
+#include "pipeline_queue.hpp"
 
 #include "clear.hpp"
 #include "frame_packet.hpp"
@@ -27,7 +28,6 @@
 
 #include <SDL3/SDL_iostream.h>
 #include <absl/container/flat_hash_map.h>
-#include <absl/container/flat_hash_set.h>
 #include <fmt/format.h>
 #include <tracy/Tracy.hpp>
 
@@ -89,7 +89,8 @@ static absl::flat_hash_map<HashType, KnownPipeline> g_knownPipelines;
 static std::optional<uint64_t> g_pipelineLayoutKey;
 static std::deque<PendingPipeline> g_pipelineQueue;
 static std::deque<PendingPipeline> g_backgroundPipelineQueue;
-static absl::flat_hash_set<PipelineRef> g_pendingPipelines;
+// The value is true only while the pending pipeline is queued in the background.
+static absl::flat_hash_map<PipelineRef, bool> g_pendingPipelines;
 static std::atomic_bool g_gpuCachePrunePending = false;
 
 static sqlite3* g_pipelineCacheDb = nullptr;
@@ -394,16 +395,8 @@ static void promote_pending_pipeline(PipelineRef hash, PipelinePriority priority
     return;
   }
 
-  auto backgroundIt = find_pending_pipeline(g_backgroundPipelineQueue, hash);
-  if (backgroundIt == g_backgroundPipelineQueue.end()) {
-    return;
-  }
-  if (priority == PipelinePriority::Blocking) {
-    g_pipelineQueue.emplace_front(std::move(*backgroundIt));
-  } else {
-    g_pipelineQueue.emplace_back(std::move(*backgroundIt));
-  }
-  g_backgroundPipelineQueue.erase(backgroundIt);
+  detail::promote_pending_pipeline(hash, priority == PipelinePriority::Blocking, g_backgroundPipelineQueue,
+                                   g_pipelineQueue, g_pendingPipelines);
 }
 
 static std::optional<PendingPipeline> take_pending_pipeline(PipelineRef hash) {
@@ -504,7 +497,7 @@ static PipelineRef find_pipeline_impl(PipelineRef runtimeKey, NewPipelineCallbac
         g_pipelineQueue.emplace_front(std::move(pending));
         break;
       }
-      g_pendingPipelines.insert(runtimeKey);
+      g_pendingPipelines.emplace(runtimeKey, priority == PipelinePriority::Background);
       ++queuedPipelines;
       notifyWorker = true;
     }
@@ -980,6 +973,7 @@ static void pipeline_worker() {
       auto& source = !g_pipelineQueue.empty() ? g_pipelineQueue : g_backgroundPipelineQueue;
       pending = std::move(source.front());
       source.pop_front();
+      g_pendingPipelines.at(pending.hash) = false;
     }
     auto result = pending.create();
     const auto pipelineCount = result.pipeline_count();

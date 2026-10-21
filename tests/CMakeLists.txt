@@ -18,6 +18,12 @@ if (NOT TARGET gtest)
   FetchContent_MakeAvailable(googletest)
 endif ()
 
+add_executable(pipeline_queue_tests pipeline_queue_test.cpp)
+target_include_directories(pipeline_queue_tests PRIVATE ../lib)
+target_compile_features(pipeline_queue_tests PRIVATE cxx_std_20)
+target_link_libraries(pipeline_queue_tests PRIVATE gtest gtest_main)
+gtest_discover_tests(pipeline_queue_tests)
+
 add_executable(io_tests
   io_test.cpp
   ../lib/card/FileIO.cpp

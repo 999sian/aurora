@@ -4,18 +4,37 @@
 #include <aurora/texture.hpp>
 #include <gtest/gtest.h>
 
-#include <atomic>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <future>
 #include <mutex>
+#include <new>
 #include <string>
 #include <vector>
+
+namespace {
+thread_local size_t* allocationCount = nullptr;
+}
+
+void* operator new(std::size_t size) {
+  if (allocationCount != nullptr) {
+    ++*allocationCount;
+  }
+  if (void* memory = std::malloc(std::max(size, std::size_t{1}))) {
+    return memory;
+  }
+  throw std::bad_alloc{};
+}
+
+void operator delete(void* memory) noexcept { std::free(memory); }
+void operator delete(void* memory, std::size_t) noexcept { std::free(memory); }
 
 namespace aurora::gfx::texture_replacement {
 namespace {
@@ -68,6 +87,34 @@ protected:
 
   void TearDown() override { shutdown(); }
 };
+
+TEST_F(ReplacementStreamingTest, RepeatedPendingRequestsDoNotAllocateSnapshots) {
+  RecordingSource source;
+  testing::set_workers_paused(true);
+  const auto path = std::string(512, 'a') + "/" + VirtualPngPath;
+  const auto registration =
+      texture::register_virtual_replacement(path, {.read = &RecordingSource::read, .userData = &source});
+  ASSERT_NE(registration.id, 0u);
+  GXTexObj_ obj{};
+  const auto key = std::get<texture::TextureSourceKey>(registration.key);
+  ASSERT_TRUE(find_source_replacement(obj, key).has_value());
+
+  size_t allocations = 0;
+  allocationCount = &allocations;
+  for (int i = 0; i < 20; ++i) {
+    find_source_replacement(obj, key);
+  }
+  allocationCount = nullptr;
+  EXPECT_EQ(allocations, 0u);
+  EXPECT_EQ(process_streaming().pendingLoads, 1u);
+
+  testing::set_workers_paused(false);
+  ASSERT_TRUE(testing::wait_for_completions(registration.id, 1, 2000));
+  EXPECT_EQ(process_streaming().pendingLoads, 0u);
+  texture::unregister_replacement(registration);
+  ASSERT_EQ(source.paths.size(), 1u);
+  EXPECT_EQ(source.paths.front(), path);
+}
 
 TEST_F(ReplacementStreamingTest, UnregisterWaitsForInFlightVirtualRead) {
   BlockingSource source;
