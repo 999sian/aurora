@@ -547,6 +547,10 @@ bool initialize(AuroraBackend auroraBackend) {
     });
 
     constexpr std::array enableToggles{
+#ifdef AURORA_UWP
+      // Xbox One S driver crashes creating placed resources during device initialization.
+      "disable_resource_suballocation",
+#endif
     /* clang-format off */
 #if _WIN32
       "use_dxc",
