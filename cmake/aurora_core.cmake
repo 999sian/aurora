@@ -29,6 +29,10 @@ if (AURORA_ENABLE_GX AND AURORA_CACHE_USE_ZSTD)
     target_link_libraries(aurora_core PRIVATE zstd::libzstd)
 endif ()
 
+if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    target_compile_options(aurora_core PUBLIC /Zc:__cplusplus)
+endif ()
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
     target_link_libraries(aurora_core PRIVATE ntdll.lib DXGI.lib)
     if (NOT AURORA_WINDOWS_STORE)

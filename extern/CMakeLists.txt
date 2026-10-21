@@ -115,6 +115,24 @@ if (NOT TARGET fmt::fmt)
 endif ()
 
 if (AURORA_ENABLE_GX)
+  if (AURORA_WINDOWS_STORE)
+    set(_uwp "${AURORA_UWP_DEP_ROOT}/x64")
+    add_library(zlib_uwp_depot SHARED IMPORTED GLOBAL)
+    set_target_properties(zlib_uwp_depot PROPERTIES
+      IMPORTED_LOCATION "${_uwp}/bin/z.dll"
+      IMPORTED_IMPLIB "${_uwp}/lib/z.lib"
+      INTERFACE_INCLUDE_DIRECTORIES "${_uwp}/include")
+    add_library(ZLIB::ZLIB ALIAS zlib_uwp_depot)
+    add_library(png_uwp_depot SHARED IMPORTED GLOBAL)
+    set_target_properties(png_uwp_depot PROPERTIES
+      IMPORTED_LOCATION "${_uwp}/bin/libpng16.dll"
+      IMPORTED_IMPLIB "${_uwp}/lib/libpng16.lib"
+      INTERFACE_INCLUDE_DIRECTORIES "${_uwp}/include;${_uwp}/include/libpng16"
+      INTERFACE_LINK_LIBRARIES ZLIB::ZLIB)
+    add_library(PNG::PNG ALIAS png_uwp_depot)
+    unset(_uwp)
+  endif ()
+
   if (NOT TARGET ZLIB::ZLIB)
     aurora_find_package_global(ZLIB QUIET)
   endif ()
