@@ -26,6 +26,7 @@
 #include "window.hpp"
 
 #include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_stdinc.h>
 #include <magic_enum.hpp>
 
 #include "system_info.hpp"
@@ -103,22 +104,38 @@ AuroraInfo initialize(int argc, char* argv[], const AuroraConfig& config) noexce
   if (g_config.appName == nullptr) {
     g_config.appName = "Aurora";
   } else {
+    #ifdef AURORA_WINDOWS_STORE
+    g_config.appName = SDL_strdup(g_config.appName);
+    #else
     g_config.appName = strdup(g_config.appName);
+    #endif
   }
   if (g_config.userPath == nullptr) {
     g_config.userPath = SDL_GetPrefPath(nullptr, g_config.appName);
   } else {
+#ifdef AURORA_WINDOWS_STORE
+    g_config.userPath = SDL_strdup(g_config.userPath);
+#else
     g_config.userPath = strdup(g_config.userPath);
+#endif
   }
   if (g_config.cachePath == nullptr) {
     g_config.cachePath = SDL_GetPrefPath(nullptr, g_config.appName);
   } else {
+#ifdef AURORA_WINDOWS_STORE
+    g_config.cachePath = SDL_strdup(g_config.cachePath);
+#else
     g_config.cachePath = strdup(g_config.cachePath);
+#endif
   }
   if (g_config.resourcesPath == nullptr) {
     g_config.resourcesPath = SDL_GetBasePath();
   } else {
+#ifdef AURORA_WINDOWS_STORE
+    g_config.resourcesPath = SDL_strdup(g_config.resourcesPath);
+#else
     g_config.resourcesPath = strdup(g_config.resourcesPath);
+#endif
   }
   if (g_config.msaa == 0) {
     g_config.msaa = 1;
@@ -134,7 +151,11 @@ AuroraInfo initialize(int argc, char* argv[], const AuroraConfig& config) noexce
 
 #ifdef AURORA_ENABLE_GX
   /* Attempt to create a window using the calling application's desired backend */
+#ifndef AURORA_WINDOWS_STORE
   AuroraBackend selectedBackend = config.desiredBackend;
+#else
+  AuroraBackend selectedBackend = BACKEND_D3D12;
+#endif
   bool windowCreated = false;
   if (selectedBackend != BACKEND_AUTO && window::create_window(selectedBackend)) {
     if (webgpu::initialize(selectedBackend, config.allowCpuAdapter)) {

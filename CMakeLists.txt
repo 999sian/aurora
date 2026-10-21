@@ -7,6 +7,13 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+set(AURORA_WINDOWS_STORE OFF)
+if (WIN32 AND CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
+  set(AURORA_WINDOWS_STORE ON)
+elseif (WIN32 AND DUSK_UWP)
+  set(AURORA_WINDOWS_STORE ON)
+endif ()
+
 option(AURORA_ENABLE_GX "Enable GX implementation and WebGPU renderer" ON)
 option(AURORA_ENABLE_DVD "Enable DVD implementation backed by nod" ON)
 option(AURORA_ENABLE_CARD "Enable CARD implementation based on kabufuda" ON)
@@ -16,37 +23,46 @@ option(AURORA_CACHE_USE_ZSTD "Compress WebGPU cache entries with zstd" ON)
 
 include(CMakeDependentOption)
 cmake_dependent_option(AURORA_ENABLE_EXAMPLES "Enable examples" ON "CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR" OFF)
-cmake_dependent_option(AURORA_ENABLE_TESTS "Enable tests" ON "NOT CMAKE_CROSSCOMPILING" OFF)
+cmake_dependent_option(AURORA_ENABLE_TESTS "Enable tests" ON "NOT CMAKE_CROSSCOMPILING AND NOT AURORA_WINDOWS_STORE" OFF)
 
 # Dependency versions
 include(cmake/AuroraDependencyVersions.cmake)
 
 # Platform-specific defaults
-set(_default_provider "auto")
-if (WIN32)
+if (AURORA_WINDOWS_STORE)
+  set(_default_provider "auto")
   set(_default_linkage "shared")
-else ()
+elseif (CMAKE_CROSSCOMPILING)
+  # Cross-compiling: vendor everything, don't use system packages
+  set(_default_provider "vendor")
   set(_default_linkage "static")
+else ()
+  set(_default_provider "auto")
+  if (WIN32)
+    set(_default_linkage "shared")
+  else ()
+    set(_default_linkage "static")
+  endif ()
 endif ()
 
 # Dawn/WebGPU (if AURORA_ENABLE_GX)
 set(AURORA_DAWN_PROVIDER "${_default_provider}" CACHE STRING
-  "How to provide Dawn: auto, vendor (build from source), system (find_package/imported), package (download prebuilt)")
-set_property(CACHE AURORA_DAWN_PROVIDER PROPERTY STRINGS auto vendor system package)
+  "How to provide Dawn: auto, vendor (build from source), system (find_package/imported), package (prebuilt), or uwp_dep (Windows Store only)")
+set_property(CACHE AURORA_DAWN_PROVIDER PROPERTY STRINGS auto vendor system package uwp_dep)
 set(AURORA_DAWN_LINKAGE "${_default_linkage}" CACHE STRING "Dawn linkage type preference")
 set_property(CACHE AURORA_DAWN_LINKAGE PROPERTY STRINGS shared static)
 
 # SDL3
 set(AURORA_SDL3_PROVIDER "${_default_provider}" CACHE STRING
-  "How to provide SDL3: auto, vendor (build from source), system (find_package/imported), or package (download prebuilt)")
-set_property(CACHE AURORA_SDL3_PROVIDER PROPERTY STRINGS auto vendor system package)
+  "How to provide SDL3: auto, vendor (build from source), system (find_package/imported), package (prebuilt), or uwp_dep (Windows Store only)")
+set_property(CACHE AURORA_SDL3_PROVIDER PROPERTY STRINGS auto vendor system package uwp_dep)
 set(AURORA_SDL3_LINKAGE "${_default_linkage}" CACHE STRING "SDL3 linkage type preference")
 set_property(CACHE AURORA_SDL3_LINKAGE PROPERTY STRINGS shared static)
 
 # nod (if AURORA_ENABLE_DVD)
 set(AURORA_NOD_PROVIDER "${_default_provider}" CACHE STRING
-  "How to provide nod: auto, vendor (build from source), system (find_package/imported), package (download prebuilt)")
-set_property(CACHE AURORA_NOD_PROVIDER PROPERTY STRINGS auto vendor system package)
+  "How to provide nod: auto, vendor (build from source), system (find_package/imported), package (prebuilt), or uwp_dep (Windows Store only)")
+set_property(CACHE AURORA_NOD_PROVIDER PROPERTY STRINGS auto vendor system package uwp_dep)
 set(AURORA_NOD_LINKAGE "${_default_linkage}" CACHE STRING "nod linkage type preference")
 set_property(CACHE AURORA_NOD_LINKAGE PROPERTY STRINGS shared static)
 

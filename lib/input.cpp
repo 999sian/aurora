@@ -452,8 +452,13 @@ void persist_controller_for_player(uint32_t player, const GameController* contro
 void initialize() noexcept {
   /* Make sure we initialize everything input related now, this will automatically add all of the connected controllers
    * as expected */
+#ifndef AURORA_WINDOWS_STORE
   AURORA_ASSERT(SDL_Init(SDL_INIT_HAPTIC | SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD | SDL_INIT_SENSOR),
                 "Failed to initialize SDL subsystems: {}", SDL_GetError());
+#else
+  AURORA_ASSERT(SDL_Init(SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD),
+                "Failed to initialize SDL subsystems: {}", SDL_GetError());
+#endif
 }
 
 struct MouseScrollStatus {

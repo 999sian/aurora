@@ -18,6 +18,9 @@ add_library(aurora::core ALIAS aurora_core)
 set_target_properties(aurora_core PROPERTIES FOLDER "aurora")
 
 target_compile_definitions(aurora_core PUBLIC AURORA TARGET_PC)
+if (AURORA_WINDOWS_STORE)
+  target_compile_definitions(aurora_core PUBLIC AURORA_WINDOWS_STORE=1)
+endif ()
 target_include_directories(aurora_core PUBLIC include)
 target_link_libraries(aurora_core PUBLIC fmt::fmt ${AURORA_SDL3_TARGET} xxHash::xxhash)
 target_link_libraries(aurora_core PRIVATE absl::btree absl::flat_hash_map sqlite3 Tracy::TracyClient)
@@ -26,15 +29,11 @@ if (AURORA_ENABLE_GX AND AURORA_CACHE_USE_ZSTD)
     target_link_libraries(aurora_core PRIVATE zstd::libzstd)
 endif ()
 
-if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-    target_compile_options(aurora_core PUBLIC
-            /Zc:__cplusplus # Enable updated `__cplusplus` macro
-    )
-endif ()
-
-if (CMAKE_SYSTEM_NAME STREQUAL Windows)
-    # stuff for fetching system info.
-    target_link_libraries(aurora_core PRIVATE wbemuuid.lib comsuppw.lib ntdll.lib DXGI.lib)
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
+    target_link_libraries(aurora_core PRIVATE ntdll.lib DXGI.lib)
+    if (NOT AURORA_WINDOWS_STORE)
+      target_link_libraries(aurora_core PRIVATE wbemuuid.lib comsuppw.lib)
+    endif ()
 elseif (APPLE)
     target_sources(aurora_core PRIVATE lib/system_info_mac.mm)
 endif ()
@@ -51,7 +50,7 @@ if (AURORA_ENABLE_GX)
     target_link_libraries(aurora_core PUBLIC imgui)
 endif ()
 
-if (AURORA_ENABLE_RMLUI)
+if(AURORA_ENABLE_RMLUI)
     target_compile_definitions(aurora_core PUBLIC AURORA_ENABLE_RMLUI)
 
     target_sources(aurora_core PRIVATE
@@ -108,5 +107,8 @@ if (AURORA_ENABLE_GX)
     endif ()
     if (DAWN_ENABLE_NULL)
         target_compile_definitions(aurora_core PRIVATE DAWN_ENABLE_BACKEND_NULL)
+    endif ()
+    if (TARGET aurora::uwp_dep)
+        target_link_libraries(aurora_core PUBLIC aurora::uwp_dep)
     endif ()
 endif ()

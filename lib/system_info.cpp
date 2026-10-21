@@ -5,8 +5,10 @@
 #define WIN32_LEAN_AND_MEAN 1
 #include <windows.h>
 #include <combaseapi.h>
+#ifndef AURORA_WINDOWS_STORE
 #include <Wbemidl.h>
 #include <comutil.h>
+#endif
 #include <dxgi.h>
 #include <wrl/client.h>
 
@@ -72,6 +74,9 @@ static std::string wideStringToUtf8(std::wstring_view str) {
 }
 
 std::string GetCpuModel() {
+#ifdef AURORA_WINDOWS_STORE
+  return "Xbox One";
+#else
   // Good fucking lord Microsoft, what the fuck is this?
   // https://learn.microsoft.com/en-us/windows/win32/wmisdk/example--getting-wmi-data-from-the-local-computer
 
@@ -171,6 +176,7 @@ std::string GetCpuModel() {
   }
 
   return result;
+#endif
 }
 
 uint64_t GetMemoryAmount() {

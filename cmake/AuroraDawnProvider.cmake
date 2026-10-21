@@ -87,10 +87,19 @@ endif ()
 # ── Auto: resolve provider based on platform availability ──
 set(_aurora_dawn_provider "${AURORA_DAWN_PROVIDER}")
 if (_aurora_dawn_provider STREQUAL "auto")
-  # Prebuilt Dawn packages available for: windows-{amd64,arm64}, linux-{x86_64,aarch64}, darwin-{arm64,x86_64}, ios-arm64, android-aarch64
-  if (_has_dawn_package)
+  if (DEFINED AURORA_UWP_DEP_ROOT AND EXISTS "${AURORA_UWP_DEP_ROOT}/x64/lib/webgpu_dawn.lib")
+    set(_aurora_dawn_provider "uwp_dep")
+  elseif (_has_dawn_package)
+    if (AURORA_WINDOWS_STORE)
+      message(FATAL_ERROR
+        "aurora: Dawn on UWP requires uwp-dep.")
+    endif ()
     set(_aurora_dawn_provider "package")
   else ()
+    if (AURORA_WINDOWS_STORE)
+      message(FATAL_ERROR
+        "aurora: Dawn on UWP requires uwp-dep.")
+    endif ()
     set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL ON)
     find_package(Dawn QUIET)
     set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL OFF)
@@ -252,9 +261,35 @@ elseif (_aurora_dawn_provider STREQUAL "package")
     set(AURORA_DAWN_IS_SHARED FALSE)
   endif ()
 
+elseif (_aurora_dawn_provider STREQUAL "uwp_dep")
+  if (NOT DEFINED AURORA_UWP_DEP_ROOT OR NOT EXISTS "${AURORA_UWP_DEP_ROOT}/x64/lib/webgpu_dawn.lib")
+    message(FATAL_ERROR "aurora: AURORA_DAWN_PROVIDER=uwp_dep requires uwp-dep x64/lib/webgpu_dawn.lib.")
+  endif ()
+  message(STATUS "aurora: Using Dawn/WebGPU from uwp-dep (${AURORA_UWP_DEP_ROOT})")
+  set(_uwp_x64 "${AURORA_UWP_DEP_ROOT}/x64")
+  if (NOT TARGET dawn_webgpu_uwp_depot)
+    add_library(dawn_webgpu_uwp_depot SHARED IMPORTED GLOBAL)
+    set_target_properties(dawn_webgpu_uwp_depot PROPERTIES
+      IMPORTED_LOCATION "${_uwp_x64}/bin/webgpu_dawn.dll"
+      IMPORTED_IMPLIB "${_uwp_x64}/lib/webgpu_dawn.lib"
+      INTERFACE_INCLUDE_DIRECTORIES "${_uwp_x64}/include"
+    )
+  endif ()
+  if (NOT TARGET dawn::webgpu_dawn)
+    add_library(dawn::webgpu_dawn ALIAS dawn_webgpu_uwp_depot)
+  endif ()
+  set(DAWN_ENABLE_D3D12 ON CACHE INTERNAL "")
+  set(DAWN_ENABLE_D3D11 ON CACHE INTERNAL "")
+  set(DAWN_ENABLE_VULKAN OFF CACHE INTERNAL "")
+  set(DAWN_ENABLE_METAL OFF CACHE INTERNAL "")
+  set(DAWN_ENABLE_DESKTOP_GL OFF CACHE INTERNAL "")
+  set(DAWN_ENABLE_OPENGLES OFF CACHE INTERNAL "")
+  set(DAWN_ENABLE_NULL ON CACHE INTERNAL "")
+  set(AURORA_DAWN_IS_SHARED TRUE PARENT_SCOPE)
+
 else ()
   message(FATAL_ERROR "Invalid AURORA_DAWN_PROVIDER: ${AURORA_DAWN_PROVIDER} "
-    "(must be auto, vendor, system, or package)")
+    "(must be auto, vendor, system, package, or uwp_dep)")
 endif ()
 
 # Ensure dawn::dawncpp_headers target exists (needed by tests).

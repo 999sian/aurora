@@ -25,9 +25,13 @@
 #include "../window.hpp"
 #include "gpu_prof.hpp"
 
-#ifdef WEBGPU_DAWN
+#if defined(WEBGPU_DAWN) && !defined(AURORA_WINDOWS_STORE)
 #include "../dawn/TracyPlatform.hpp"
 #include <dawn/native/DawnNative.h>
+#endif
+
+#ifdef AURORA_WINDOWS_STORE
+extern "C" __declspec(dllimport) void* uwp_GetWindowReference();
 #endif
 
 namespace aurora::gx {
@@ -763,7 +767,17 @@ static bool create_surface() {
   }
   window::SurfaceLock surfaceLock;
   release_surface_locked();
+#ifdef AURORA_WINDOWS_STORE
+  wgpu::SurfaceDescriptorFromWindowsCoreWindow surfaceDesc{};
+  surfaceDesc.sType = wgpu::SType::SurfaceDescriptorFromWindowsCoreWindow;
+  surfaceDesc.coreWindow = uwp_GetWindowReference();
+  wgpu::SurfaceDescriptor descriptor{};
+  descriptor.nextInChain = reinterpret_cast<const wgpu::ChainedStruct*>(&surfaceDesc);
+  descriptor.label = "Surface";
+  g_surface = g_instance.CreateSurface(&descriptor);
+#else
   g_surface = create_window_surface(g_instance, window, "Surface");
+#endif
   if (!g_surface) {
     Log.error("Failed to create surface");
     return false;
@@ -781,7 +795,7 @@ bool initialize(AuroraBackend auroraBackend, bool allowCpu) {
         .requiredFeatureCount = requiredInstanceFeatures.size(),
         .requiredFeatures = requiredInstanceFeatures.data(),
     };
-#ifdef WEBGPU_DAWN
+#if defined(WEBGPU_DAWN) && !defined(AURORA_WINDOWS_STORE)
     constexpr std::array instanceToggles{
         "allow_unsafe_apis",
     };
@@ -969,6 +983,10 @@ bool initialize(AuroraBackend auroraBackend, bool allowCpu) {
         });
 
     constexpr std::array enableToggles{
+#ifdef AURORA_WINDOWS_STORE
+        // Xbox One S crashes in CreatePlacedResource during device initialization.
+        "disable_resource_suballocation",
+#endif
 #if _WIN32
         "use_dxc",
 #ifndef NDEBUG
